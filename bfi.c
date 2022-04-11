@@ -1,5 +1,7 @@
 /**
- * TODO: add an interactive prompt
+ * TODO: - add an interactive prompt
+ *       - make the nested looping more robust
+ *         against overflows
  */
 
 #include <stdio.h>
@@ -60,7 +62,7 @@ char * loadTape(const char filename[], size_t * tape_size)
 	if (!f) {
 		fprintf(stderr, "Error opening the file '%s'.\n",
 			filename);
- return 0x0;
+		return 0x0;
 	}
 
 	size_t t_size = TAPE_CHUNK;
@@ -86,19 +88,19 @@ char * loadTape(const char filename[], size_t * tape_size)
  */
 int interpret(char * tape, size_t size)
 {
-	size_t cond = 0,
-		loop_s = 0,
-		et_pos = 0;
-	char et[size];
-	memset(&et, 0, size);
+	char   et[size];
+	memset(&et, 0x0, size);
+	size_t et_pos     = 0;
 	// executable tape
-	
+	size_t stack[256] = {0};
+	size_t st_pos     = 0;
+		
 	for (size_t i = 0; i < size; ++i) {
 		switch (tape[i]) {
 		case (OP_ADD): ++et[et_pos]; break;
 		case (OP_SUB): --et[et_pos]; break;
 		case (MV_INC):
-			if (et_pos + 1 < size) {
+			if (et_pos != size) {
 				++et_pos;
 			} else {
 				fprintf(stderr, "%sError:%s tape overrun in instruction %zu\n",
@@ -116,22 +118,13 @@ int interpret(char * tape, size_t size)
 			}
 			break;
 		case (LOOP_S):
-			/**
-			 * The looping strategy for this interpreter is
-			 * extremely yanky, it keeps two pointers, in the 
-			 * tape and in exe tape, and it jumps between the 
-			 * two based on the condition on the exe tape,
-			 * this takes out the possibility for nested loops.
-			 * I've seen that stacks are useful in other brainfuck
-			 * interpreters, but I didn't knew how to implement one ._.
-			 */
-			cond = et_pos;
-			loop_s = i;
+			stack[st_pos++] = i;
 			break;
 		case (LOOP_E):
-			if (et[cond]) {
-				et_pos = cond;
-				i = loop_s;
+			if (et[et_pos]) {
+				i = stack[st_pos-1];
+			} else {
+				--st_pos;
 			}
 			break;
 		case (IO_INP): et[et_pos] = getchar(); break;

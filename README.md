@@ -6,7 +6,5 @@ interpreter.
 
 ## Note
 	+ File goes is, file goes out
-		bfi does not have an interactive prompt
-	+ Nested loops are **not suported**, the use of
-		them leads to undefined behaviour
+	bfi does not have an interactive prompt
 			
