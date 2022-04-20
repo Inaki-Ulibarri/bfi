@@ -1,7 +1,6 @@
 /**
- * TODO: - add an interactive prompt
- *       - make the nested looping more robust
- *         against overflows
+ * TODO: - prevent memory leak on sigint
+ *       - add getopt.h to add options
  */
 
 #include <stdio.h>
@@ -12,64 +11,73 @@
 #define ARRSZ(a) (sizeof(a)/sizeof(a[0]))
 
 #define TAPE_CHUNK 64
-#define OP_ADD    '+'
-#define OP_SUB    '-'
-#define MV_INC    '>'
-#define MV_DEC    '<'
-#define IO_INP    ','
-#define IO_OUT    '.'
-#define LOOP_S    '['
-#define LOOP_E    ']'
+#define OP_ADD     '+'
+#define OP_SUB     '-'
+#define MV_INC     '>'
+#define MV_DEC     '<'
+#define IO_INP     ','
+#define IO_OUT     '.'
+#define LOOP_S     '['
+#define LOOP_E     ']'
 
+// Ansii escape codes
 #define COL_END     "\x1b[0m"
 #define COL_BLK     "\x1b[0;5;0m"
 #define COL_RED     "\x1b[0;0;31m"
 #define COL_RED_BLK "\x1b[0;5;31m"
 
-int interpret(char * tape, size_t size);
-char * loadTape(const char filename[], size_t * tape_size);
+int    interpret(char tape[], size_t size);
+char * floadTape(const char filename[], size_t * tape_size);
+char * readLine(const char prompt[], int size);
 
 int main(int argc, char * argv[])
 {
-	if (argc != 2) {
-		fprintf(stderr,
-			"%s: <file> \n"
-			"Input File required \n",
-			argv[0]);
-		return EXIT_FAILURE;
-	}
-
 	size_t tape_sz = 0;
-	char * tape = loadTape(argv[1], &tape_sz);
-	if (!tape) {
-		fprintf(stderr, "%sError:%s loading the file to the tape.\n",
-			COL_RED_BLK, COL_END);
+	char * tape = 0x0;
+	if (argc == 1) {
+		tape_sz = 128;
+		for (;;) {
+			tape = readLine("%~ ", tape_sz);
+			sscanf(tape, " %s", tape);
+			if (!strncmp(tape, "quit", tape_sz)) {
+				free(tape);
+				break;
+			} else {
+				interpret(tape, tape_sz);
+			}
+			free(tape);
+			putchar('\n');
+		}
+	} else {
+		tape = floadTape(argv[1], &tape_sz);
+		if (interpret(tape, tape_sz)) {
+			free(tape);
+			return EXIT_FAILURE;
+		}
 	}
-	
-	interpret(tape, tape_sz);
-	
-	free(tape);
+		
 	return EXIT_SUCCESS;
 }
 
 /**
- * Load the entire input file into a tape to
+ * Load the entire input file into a tape (string) to
  * ease the interpretation
  */
-char * loadTape(const char filename[], size_t * tape_size)
+char * floadTape(const char filename[], size_t * tape_size)
 {
 	FILE * f = fopen(filename, "r");
 	if (!f) {
-		fprintf(stderr, "Error opening the file '%s'.\n",
-			filename);
+		fprintf(stderr, "%sError:%s couldn't open the file '%s'.\n",
+			COL_RED_BLK, COL_END, filename);	
 		return 0x0;
 	}
 
 	size_t t_size = TAPE_CHUNK;
 	char * t =  calloc(t_size, sizeof(char));
-	int ch = getc(f);
+	int ch   = getc(f);
 	size_t i = 0;
 
+	
 	for (; ch != EOF; ch = getc(f), ++i) {
 		if (t_size < i + 1) {
 			t_size += TAPE_CHUNK;
@@ -83,18 +91,23 @@ char * loadTape(const char filename[], size_t * tape_size)
 	return t;
 }
 
-/**
- * Actually interpret and execute the tape
- */
-int interpret(char * tape, size_t size)
+int interpret(char tape[], size_t size)
 {
+	if (!tape) {
+		fprintf(stderr,
+			"%sError:%s couldn't load the tape\n",
+			COL_RED_BLK, COL_END);
+		return 1;
+	}
+
 	char   et[size];
+	size_t et_pos  = 0;
 	memset(&et, 0x0, size);
-	size_t et_pos     = 0;
 	// executable tape
-	size_t stack[256] = {0};
-	size_t st_pos     = 0;
-		
+	size_t st_sz   = 64;
+	size_t * stack = calloc(st_sz, sizeof(size_t));
+	size_t st_pos  = 0;
+	
 	for (size_t i = 0; i < size; ++i) {
 		switch (tape[i]) {
 		case (OP_ADD): ++et[et_pos]; break;
@@ -103,8 +116,10 @@ int interpret(char * tape, size_t size)
 			if (et_pos != size) {
 				++et_pos;
 			} else {
-				fprintf(stderr, "%sError:%s tape overrun in instruction %zu\n",
+				fprintf(stderr,
+					"%sError:%s tape overrun in instruction %zu\n",
 					COL_RED_BLK, COL_END, i+1);
+				free(stack);
 				return 1;
 			}
 			break;			
@@ -112,13 +127,21 @@ int interpret(char * tape, size_t size)
 			if (et_pos != 0) {
 				--et_pos;
 			} else {
-				fprintf(stderr, "%sError:%s tape underrun in instrunction %zu\n",
+				fprintf(stderr,
+					"%sError:%s tape underrun in instrunction %zu\n",
 					COL_RED_BLK, COL_END, i+1);
+				free(stack);
 				return 1;
 			}
 			break;
 		case (LOOP_S):
-			stack[st_pos++] = i;
+			if (st_pos != st_sz) {
+				stack[st_pos++] = i;
+			} else {
+				st_sz += 64;
+				stack = reallocarray(stack, st_sz, sizeof(size_t));
+				stack[st_pos++] = i;
+			}
 			break;
 		case (LOOP_E):
 			if (et[et_pos]) {
@@ -129,8 +152,20 @@ int interpret(char * tape, size_t size)
 			break;
 		case (IO_INP): et[et_pos] = getchar(); break;
 		case (IO_OUT): putchar(et[et_pos]); break;			
-		default: break; // brainfuck comment or empty space
+		default: continue; // brainfuck comment or empty space
 		}
 	}
+
+	free(stack);
 	return 0;
+}
+
+char * readLine(const char prompt[], int size)
+{
+	char * buff = calloc(size, sizeof(char));
+	
+	printf("%s", prompt);
+	fgets(buff, size, stdin);
+
+	return buff;
 }
