@@ -1,6 +1,4 @@
-/**
- * TODO: - prevent memory leak on sigint
- *       - add getopt.h to add options
+/* TODO: - add getopt.h to add options
  */
 
 #include <stdio.h>
@@ -33,7 +31,7 @@ char * readLine(const char prompt[], int size);
 int main(int argc, char * argv[])
 {
 	size_t tape_sz = 0;
-	char * tape = 0x0;
+	char * tape     = NULL;
 	if (argc == 1) {
 		tape_sz = 128;
 		for (;;) {
@@ -59,8 +57,8 @@ int main(int argc, char * argv[])
 	return EXIT_SUCCESS;
 }
 
-/**
- * Load the entire input file into a tape (string) to
+
+/* Load the entire input file into a tape (string) to
  * ease the interpretation
  */
 char * floadTape(const char filename[], size_t * tape_size)
@@ -69,7 +67,7 @@ char * floadTape(const char filename[], size_t * tape_size)
 	if (!f) {
 		fprintf(stderr, "%sError:%s couldn't open the file '%s'.\n",
 			COL_RED_BLK, COL_END, filename);	
-		return 0x0;
+		return NULL;
 	}
 
 	size_t t_size = TAPE_CHUNK;
